@@ -3,30 +3,32 @@
 #' @noRd
 get_fingerprint_KC <- function(vect, bus_suffix = TRUE,
                                ignore_strings = NULL) {
+  # Replace some punctuation with an empty string (want "Ed's" to be 1 word).
+  vect <- gsub("[;'`\"]", "", tolower(vect), perl = TRUE)
+  # Replace other punct with a blank space (want "cats,inc" to be 2 words).
+  vect <- gsub("[[:punct:]]", " ", vect, perl = TRUE)
   if (bus_suffix) {
-    vect <- business_suffix(tolower(vect))
+    vect <- business_suffix(vect)
     if (!is.null(ignore_strings)) {
       ignore_strings <- c(ignore_strings,
                           c("inc", "corp", "co", "llc", "ltd", "div", "ent",
-                            "lp"))
+                            "lp", "and"))
     } else {
       ignore_strings <- c("inc", "corp", "co", "llc", "ltd", "div", "ent",
-                          "lp")
+                          "lp", "and")
     }
-  } else {
-    vect <- tolower(vect)
   }
-  # Perform initial transformations.
-  vect <- gsub("[[:punct:]]", "", vect, perl = TRUE)
+  ignore_str_null <- is.null(ignore_strings)
+  vect <- remove_accents(vect)
+  if(!ignore_str_null) ignore_strings <- remove_accents(ignore_strings)
   vect <- strsplit(cpp_trimws_left(vect), "\\s+", perl = TRUE)
   # If "ignore_strings" is not NULL, for each element of list "vect", remove
   # any string that has a match within vector "ignore_strings".
-  if (!is.null(ignore_strings)) vect <- remove_strings(vect, ignore_strings)
+  if (!ignore_str_null) vect <- remove_strings(vect, ignore_strings)
   # Final transformations, then return object "out".
   vect <- cpp_list_unique(vect, sort_vals = TRUE)
-  vect <- vapply(vect, paste, character(1), collapse = " ")
-  vect <- iconv(vect, to = "ASCII//TRANSLIT")
-  vect[vect == ""] <- NA_character_
+  vect <- cpp_paste_list(vect, collapse_str = " ")
+  vect[!nzchar(vect)] <- NA_character_
   return(vect)
 }
 
@@ -35,38 +37,52 @@ get_fingerprint_KC <- function(vect, bus_suffix = TRUE,
 #'@noRd
 get_fingerprint_ngram <- function(vect, numgram = 2, bus_suffix = TRUE,
                                   ignore_strings = NULL) {
+  # Replace some punctuation with an empty string (want "Ed's" to be 1 word).
+  vect <- gsub("[;'`\"]", "", tolower(vect), perl = TRUE)
+  # Replace other punct with a blank space (want "cats,inc" to be 2 words).
+  vect <- gsub("[[:punct:]]", " ", vect, perl = TRUE)
   # Compile variable ignore_strings.
   if (bus_suffix) {
+    vect <- business_suffix(vect)
     if (!is.null(ignore_strings)) {
       ignore_strings <- c(ignore_strings,
                           c("inc", "corp", "co", "llc", "ltd", "div", "ent",
-                            "lp"))
+                            "lp", "and"))
     } else {
       ignore_strings <- c("inc", "corp", "co", "llc", "ltd", "div", "ent",
-                          "lp")
+                          "lp", "and")
     }
   }
-
   if (!is.null(ignore_strings)) {
-    # Initial transformations given "ignore_strings" is not NULL.
-    #
     # Use values in "ignore_strings" to create a regex of substrings to
-    # eliminate from each element of "vect" (also remove all punctuation
-    # and spaces).
+    # eliminate from each element of "vect" (also remove all spaces).
     regex <- paste0("\\b(",
                     paste(ignore_strings, collapse = "|"),
-                    ")\\b|[[:punct:]]|\\s")
-    vect <- business_suffix(tolower(vect))
-    vect <- gsub(regex, "", vect, perl = TRUE)
+                    ")\\b|\\s")
   } else {
-    # Initial transformations given "ignore_strings" is NULL.
-    gsub("[[:punct:]]|\\s", "", tolower(vect), perl = TRUE)
+    # Otherwise, if ignore_strings is NULL, only remove spaces.
+    regex <- "\\s+"
   }
-
+  vect <- gsub(regex, "", vect, perl = TRUE)
   # Rest of the transformations. For each value in vect: get ngrams, filter by
   # unique, sort alphabetically, paste back together, and normalize encoding.
-  vect <- strsplit(vect, "", fixed = TRUE)
-  vect <- cpp_get_char_ngrams(vect, numgram = numgram)
-  vect <- iconv(vect, to = "ASCII//TRANSLIT")
+  vect <- remove_accents(vect)
+  if (numgram == 1) {
+    vect <- strsplit(vect, "", fixed = TRUE)
+    vect <- cpp_list_unique(vect, sort_vals = TRUE)
+    vect <- cpp_paste_list(vect, collapse_str = "")
+  } else {
+    vect <- cpp_get_char_ngrams(vect, numgram = numgram)
+  }
   return(vect)
+}
+
+#' Remove accents from chars, while properly handling UTF-8 strings.
+#'
+#' @noRd
+remove_accents <- function(vect) {
+  enc <- Encoding(vect) == "UTF-8"
+  vect[enc] <- stri_trans_general(vect[enc], "latin-ASCII")
+  vect[!enc] <- iconv(vect[!enc], to = "ASCII//TRANSLIT")
+  vect
 }

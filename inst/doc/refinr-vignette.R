@@ -28,7 +28,7 @@ x <- c("Acme Pizza, Inc.", "ACME PIZA COMPANY", "Acme Pizzazza LLC")
 n_gram_merge(x)
 
 ## ------------------------------------------------------------------------
-n_gram_merge(x, edit_dist_weights = c(d = 1, i = 0.4, s = 0.2, t = 0.2))
+n_gram_merge(x, weight = c(d = 1, i = 0.4, s = 0.2, t = 0.2))
 
 ## ------------------------------------------------------------------------
 n_gram_merge(x, method = "soundex", useBytes = TRUE)

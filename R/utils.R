@@ -9,19 +9,13 @@ business_suffix <- function(vect) {
   vect <- gsub(" division| divisions", " div", vect, perl = TRUE)
   vect <- gsub(" enterprises| enterprise", " ent", vect, perl = TRUE)
   vect <- gsub(" limited partnership", " lp", vect, fixed = TRUE)
-  vect <- gsub(" and ", " & ", vect, fixed = TRUE)
   return(vect)
 }
 
-# Flatten a nested list such that each character vector occupies its own
-# element in the return list. Can handle lists that have inconsistent nesting
-# levels.
-flatten_list <- function(list_obj) {
-  more_lists <- vapply(list_obj, is.list, logical(1), USE.NAMES = FALSE)
-  out <- c(list_obj[!more_lists], unlist(list_obj[more_lists], FALSE, FALSE))
-  if(sum(more_lists)){
-    Recall(out)
-  } else {
-    return(out)
-  }
+# Modified version of stats:::as.matrix.dist() that doesn't mess with dimnames.
+as_matrix <- function (x) {
+  size <- attr(x, "Size")
+  df <- matrix(0, size, size)
+  df[row(df) > col(df)] <- x
+  df + t.default(df)
 }

@@ -24,5 +24,9 @@ vect <- c("Bakersfield Highschool", "BAKERSFIELD high",
 vect_ng <- key_collision_merge(vect, ignore_strings = c("high", "school",
                                                         "highschool"))
 test_that("param 'ignore_strings' having expected effect", {
-  expect_equal(unique(vect_ng), vect[2])
+  expect_equal(length(unique(vect_ng)), 1)
 })
+
+vect <- c("César Moreira Nuñez", "cesar moreira nunez")
+test_that("encoding of input strings handled correctly",
+          expect_equal(length(unique(key_collision_merge(vect))), 1))

@@ -15,7 +15,7 @@ test_that("output lengths are correct", {
   expect_equal(length(unique(n_gram_merge(vect, bus_suffix = FALSE))),
                length(vect))
   vect_ng <- n_gram_merge(
-    vect, edit_dist_weights = c(d = 1, i = 1, s = 0.1, t = 0.1))
+    vect, weight = c(d = 1, i = 1, s = 0.1, t = 0.1))
   expect_equal(length(unique(vect_ng)), 4)
 })
 
@@ -28,7 +28,7 @@ vect <- c("Bakersfield Highschool", "BAKERSFIELD high",
 vect_ng <- n_gram_merge(vect, ignore_strings = c("high", "school",
                                                  "highschool"))
 test_that("param 'ignore_strings' having expected effect", {
-  expect_equal(unique(vect_ng), vect[2])
+  expect_equal(length(unique(vect_ng)), 1)
 })
 
 test_that("no errors when input includes len 1 str, len 0 str, NA's", {
@@ -47,3 +47,7 @@ test_that("ellipsis args are being handled properly", {
   expect_error(n_gram_merge(vect, a = c("cats", "are", "great")))
   expect_error(n_gram_merge(vect, weight = c(1, 2, 1, 1)))
 })
+
+vect <- c("César Moreira Nuñez", "cesar moreira nunez")
+test_that("encoding of input strings handled correctly",
+          expect_equal(length(unique(n_gram_merge(vect))), 1))

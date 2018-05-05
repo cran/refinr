@@ -39,40 +39,25 @@ key_collision_merge <- function(vect, ignore_strings = NULL, bus_suffix = TRUE,
   stopifnot(is.null(dict) || is.character(dict))
   stopifnot(is.null(ignore_strings) || is.character(ignore_strings))
 
-  # If dict is not NULL, get unique values of dict.
-  if (!is.null(dict)) dict <- cpp_unique(dict)
+  # If dict is not NULL, remove NA's and get unique values of dict.
+  is_dict_null <- is.null(dict)
+  if (!is_dict_null) dict <- cpp_unique(dict[!is.na(dict)])
 
   # If ignore_strings is not NULL, make all values lower case then get uniques.
   if (!is.null(ignore_strings)) {
-    ignore_strings <- unique(tolower(ignore_strings))
+    ignore_strings <- unique(tolower(ignore_strings[!is.na(ignore_strings)]))
   }
 
   # Get vector of key values. If dict is not NULL, get vector of key values
   # for dict as well.
   keys_vect <- get_fingerprint_KC(vect, bus_suffix, ignore_strings)
-  if (!is.null(dict)) {
+  if (!is_dict_null) {
     keys_dict <- get_fingerprint_KC(dict, bus_suffix, ignore_strings)
+  } else {
+    keys_dict <- NA_character_
+    dict <- NA_character_
   }
 
-  # If dict is NULL, get vector of all key values that have at least one
-  # duplicate within keys. Otherwise, get all key_vect values that have:
-  # 1. At least one duplicate within key_vect, AND/OR
-  # 2. At least one matching value within key_dict.
-  if (is.null(dict)) {
-    clusters <- cpp_get_key_dups(keys_vect)
-  } else {
-    clusters <- cpp_get_key_dups(c(keys_vect, keys_dict))
-  }
-
-  # For each cluster, make mass edits to the values of vect related to that
-  # cluster.
-  keys_in_clusters <- keys_vect %in% clusters
-  if (is.null(dict)) {
-    vect <- merge_KC_clusters_no_dict(clusters, keys_vect, vect,
-                                      keys_in_clusters)
-  } else {
-    vect <- merge_KC_clusters_dict(clusters, keys_vect, vect, keys_dict, dict,
-                                   keys_in_clusters)
-  }
-  return(vect)
+  # Make mass edits to the values of vect related to each cluster.
+  return(merge_KC_clusters(vect, keys_vect, dict, keys_dict))
 }
