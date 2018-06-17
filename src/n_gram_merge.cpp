@@ -3,11 +3,12 @@
 using namespace Rcpp;
 
 
-// Iterate over all clusters, make mass edits related to each cluster.
+// Iterate over all clusters, make mass edits to obj "vect", related to each
+// cluster.
 CharacterVector merge_ngram_clusters(List clusters,
-                                     CharacterVector n_gram_keys,
-                                     CharacterVector univect,
-                                     CharacterVector vect) {
+                                     const CharacterVector &n_gram_keys,
+                                     const CharacterVector &univect,
+                                     const CharacterVector &vect) {
   CharacterVector output = clone(vect);
 
   // Unlist clusters to a char vector, and get uniques.
@@ -84,14 +85,14 @@ CharacterVector merge_ngram_clusters(List clusters,
 }
 
 
-// Prep steps prior to the merging clusters, given that approximate string
+// Prep steps prior to the merging of clusters, given that approximate string
 // matching is NOT being used (via arg edit_threshold). Generate clusters by
 // finding all elements of n_gram_keys that have one or more identical
 // matches, then pass args along to merge_ngram_clusters().
 // [[Rcpp::export]]
-CharacterVector ngram_merge_no_approx(CharacterVector n_gram_keys,
-                                      CharacterVector univect,
-                                      CharacterVector vect) {
+CharacterVector ngram_merge_no_approx(const CharacterVector &n_gram_keys,
+                                      const CharacterVector &univect,
+                                      const CharacterVector &vect) {
   // Find all elements of n_gram_keys that have one or more identical
   // matches.
   CharacterVector n_gram_keys_dups = cpp_get_key_dups(n_gram_keys);
@@ -109,16 +110,26 @@ CharacterVector ngram_merge_no_approx(CharacterVector n_gram_keys,
 }
 
 
-// Prep steps prior to the merging clusters, given that approximate string
-// matching is being used (via arg edit_threshold). Filter clusters based on
-// distmatrices, then pass args along to merge_ngram_clusters().
+// Prep steps prior to the merging of clusters, given that approximate string
+// matching is being used (via arg edit_threshold).
+// Create initial clusters, filter clusters based on matrices of numeric
+// string edit distance values, then pass args along to merge_ngram_clusters().
 // [[Rcpp::export]]
-CharacterVector ngram_merge_approx(CharacterVector n_gram_keys,
-                                   CharacterVector univect,
-                                   CharacterVector vect,
-                                   List distmatrices,
-                                   double edit_threshold,
-                                   List initial_clust) {
+CharacterVector ngram_merge_approx(const CharacterVector &n_gram_keys,
+                                   const CharacterVector &one_gram_keys,
+                                   const CharacterVector &univect,
+                                   const CharacterVector &vect,
+                                   const double &edit_threshold,
+                                   SEXP method, SEXP weight, SEXP p, SEXP bt,
+                                   SEXP q, SEXP useBytes, SEXP nthread) {
+  // Get initial clusters.
+  List initial_clust = get_ngram_initial_clusters(n_gram_keys, one_gram_keys);
+
+  // Create an edit distance matrix for each initial cluster, using the
+  // function "sd_lower_tri()" from the stringdist package.
+  List distmatrices = get_stringdist_matrices(initial_clust, method, weight, p,
+                                              bt, q, useBytes, nthread);
+
   // For each matrix in distmatrices, create clusters of matches within the
   // matrix, based on lowest numeric edit distance (matches must have a value
   // below edit_threshold in order to be considered suitable for merging).
@@ -128,7 +139,7 @@ CharacterVector ngram_merge_approx(CharacterVector n_gram_keys,
   // If length of clusters is zero, return vect unedited.
   if(clusters.size() == 0) return(vect);
 
-  // If clusters is no len zero, pass args along to merge_ngram_clusters().
+  // Pass args along to merge_ngram_clusters().
   return(merge_ngram_clusters(clusters, n_gram_keys, univect, vect));
 }
 
@@ -138,7 +149,6 @@ CharacterVector ngram_merge_approx(CharacterVector n_gram_keys,
 // in unigram_keys, then use those indices to get a subset of ngram_keys. Add
 // the subset to List "out". After "out" is compiled, remove elements of the
 // list that have length less than 2.
-// [[Rcpp::export]]
 List get_ngram_initial_clusters(CharacterVector ngram_keys,
                                 CharacterVector unigram_keys) {
   CharacterVector unigram_dups = cpp_get_key_dups(unigram_keys);
@@ -183,13 +193,53 @@ List get_ngram_initial_clusters(CharacterVector ngram_keys,
 }
 
 
+// Take in a list of character vectors, create a stringdist edit matrix for
+// each vector, return a list of edit matrices.
+List get_stringdist_matrices(const List &clusters, SEXP method, SEXP weight, SEXP p,
+                             SEXP bt, SEXP q, SEXP useBytes, SEXP nthread) {
+  int clust_len = clusters.size();
+  List out(clust_len);
+
+  for(int j = 0; j < clust_len; ++j) {
+    SEXP curr_clust = clusters[j];
+    // Run args through stringdist sd_lower_tri C function.
+    NumericVector x = stringdist_lower_tri(curr_clust, method, weight, p,
+                                           bt, q, useBytes, nthread);
+    // Initialize output matrix.
+    int mat_dim = Rf_xlength(curr_clust);
+    NumericMatrix mat(mat_dim, mat_dim);
+
+    int iter_len = mat_dim - 1;
+    int x_val = 0;
+
+    // Loop to fill in the lower and upper tri of mat with the numeric values
+    // of x.
+    for(int i = 0; i < iter_len; ++i) {
+      for(int n = i + 1; n < mat_dim; ++n) {
+        // Fill in lower tri.
+        mat(n,i) = x[x_val];
+        // Fill in upper tri.
+        mat(i,n) = x[x_val];
+        //Bump x_val.
+        x_val++;
+      }
+    }
+
+    out[j] = mat;
+  }
+
+  return(out);
+}
+
+
 // Filter stringdist matrices.
 // Function takes a list of matrices of edit distances, each created by pkg
 // stringdist. For each element of distmatrices, create clusters of matches
 // within the matrix, based on lowest numeric edit distance. (matches must
 // have a value below edit_threshold in order to be considered a cluster
 // suitable for merging).
-List filter_initial_clusters(List distmatrices, double edit_threshold, List clusters) {
+List filter_initial_clusters(const List &distmatrices, const double &edit_threshold,
+                             const List &clusters) {
   int distmatrices_len = distmatrices.size();
   List out(distmatrices_len);
   LogicalVector na_filter(distmatrices_len);
@@ -368,7 +418,7 @@ List char_ngram(const std::vector<std::string>& strings, int numgram) {
 // reduce to unique tokens, then collapse the tokens back together into single
 // string.
 // [[Rcpp::export]]
-CharacterVector cpp_get_char_ngrams(std::vector<std::string> vects,
+CharacterVector cpp_get_char_ngrams(const std::vector<std::string> &vects,
                                     int numgram) {
 
   // Get character ngrams for each element of vects.

@@ -105,14 +105,14 @@ x &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot
 </div>
 <div id="n_gram_merge" class="section level2">
 <h2>n_gram_merge</h2>
-<p>Works similarly to <code>key_collision_merge</code>, however it features approximate string matching, which allows for merging of strings that contain slight spelling differences. Package <a href="https://CRAN.R-project.org/package=stringdist">stringdist</a> is used for calculating edit distance between strings.</p>
+<p>Works similarly to <code>key_collision_merge</code>, however it features approximate string matching, which allows for merging of strings that contain slight spelling differences. The <a href="https://CRAN.R-project.org/package=stringdist">stringdist</a> package is used for calculating edit distance between strings. <code>refinr</code> links to the stringdist C API to improve the speed of the functions.</p>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">x &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;Acme Pizza, Inc.&quot;</span>, <span class="st">&quot;ACME PIZA COMPANY&quot;</span>, <span class="st">&quot;Acme Pizzazza LLC&quot;</span>)
 <span class="kw">n_gram_merge</span>(x)
 <span class="co">#&gt; [1] &quot;ACME PIZA COMPANY&quot; &quot;ACME PIZA COMPANY&quot; &quot;ACME PIZA COMPANY&quot;</span></code></pre></div>
 <p>The performance of the approximate string matching can be ajusted using parameters <code>weight</code> and/or <code>edit_threshold</code>.</p>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">n_gram_merge</span>(x, <span class="dt">weight =</span> <span class="kw">c</span>(<span class="dt">d =</span> <span class="dv">1</span>, <span class="dt">i =</span> <span class="fl">0.4</span>, <span class="dt">s =</span> <span class="fl">0.2</span>, <span class="dt">t =</span> <span class="fl">0.2</span>))
 <span class="co">#&gt; [1] &quot;ACME PIZA COMPANY&quot; &quot;ACME PIZA COMPANY&quot; &quot;Acme Pizzazza LLC&quot;</span></code></pre></div>
-<p>Additional arguments can also be supplied that will be passed along to function <a href="https://github.com/markvanderloo/stringdist/blob/master/pkg/R/stringdist.R#L207">stringdistmatrix</a> from the <a href="https://CRAN.R-project.org/package=stringdist">stringdist</a> package.</p>
+<p><code>n_gram_merge()</code> is designed to accept any of the arguments that <a href="https://github.com/markvanderloo/stringdist/blob/master/pkg/R/stringdist.R#L207">stringdist::stringdistmatrix</a> takes. These args will be passed along to the the <code>stringdist</code> functions.</p>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">n_gram_merge</span>(x, <span class="dt">method =</span> <span class="st">&quot;soundex&quot;</span>, <span class="dt">useBytes =</span> <span class="ot">TRUE</span>)
 <span class="co">#&gt; [1] &quot;ACME PIZA COMPANY&quot; &quot;ACME PIZA COMPANY&quot; &quot;Acme Pizzazza LLC&quot;</span></code></pre></div>
 <p><code>n_gram_merge</code> also features arguments <code>bus_suffix</code> and <code>ignore_strings</code>, that operate the same way they do for function <code>key_collision_merge</code>.</p>
@@ -124,15 +124,16 @@ x &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot
 <h2>Example Workflow</h2>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(dplyr)
 
-x &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;Clemsson University&quot;</span>, 
-       <span class="st">&quot;university-of-clemson&quot;</span>, 
-       <span class="st">&quot;CLEMSON&quot;</span>, 
-       <span class="st">&quot;Clem son, U.&quot;</span>, 
-       <span class="st">&quot;college, clemson u&quot;</span>, 
-       <span class="st">&quot;M.I.T.&quot;</span>, 
-       <span class="st">&quot;Technology, Massachusetts' Institute of&quot;</span>, 
-       <span class="st">&quot;Massachusetts Inst of Technology&quot;</span>, 
-       <span class="st">&quot;UNIVERSITY:  mit&quot;</span>
+x &lt;-<span class="st"> </span><span class="kw">c</span>(
+  <span class="st">&quot;Clemsson University&quot;</span>, 
+  <span class="st">&quot;university-of-clemson&quot;</span>, 
+  <span class="st">&quot;CLEMSON&quot;</span>, 
+  <span class="st">&quot;Clem son, U.&quot;</span>, 
+  <span class="st">&quot;college, clemson u&quot;</span>, 
+  <span class="st">&quot;M.I.T.&quot;</span>, 
+  <span class="st">&quot;Technology, Massachusetts' Institute of&quot;</span>, 
+  <span class="st">&quot;Massachusetts Inst of Technology&quot;</span>, 
+  <span class="st">&quot;UNIVERSITY:  mit&quot;</span>
 )
 
 ignores &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;university&quot;</span>, <span class="st">&quot;college&quot;</span>, <span class="st">&quot;u&quot;</span>, <span class="st">&quot;of&quot;</span>, <span class="st">&quot;institute&quot;</span>, <span class="st">&quot;inst&quot;</span>)
