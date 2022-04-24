@@ -3,6 +3,9 @@
 #' @noRd
 get_fingerprint_KC <- function(vect, bus_suffix = TRUE,
                                ignore_strings = NULL) {
+  # Remove char accent marks.
+  vect <- remove_accents(vect)
+  if(!is.null(ignore_strings)) ignore_strings <- remove_accents(ignore_strings)
   # Replace some punctuation with an empty string (want "Ed's" to be 1 word).
   vect <- gsub("[;'`\"]", "", tolower(vect), perl = TRUE)
   # Replace other punct with a blank space (want "cats,inc" to be 2 words).
@@ -19,17 +22,13 @@ get_fingerprint_KC <- function(vect, bus_suffix = TRUE,
                           "lp", "and")
     }
   }
-  ignore_str_null <- is.null(ignore_strings)
-  vect <- remove_accents(vect)
-  if(!ignore_str_null) ignore_strings <- remove_accents(ignore_strings)
   vect <- strsplit(cpp_trimws_left(vect), " ", fixed = TRUE)
   # If "ignore_strings" is not NULL, for each element of list "vect", remove
   # any string that has a match within vector "ignore_strings".
-  if (!ignore_str_null) vect <- remove_strings(vect, ignore_strings)
+  if (!is.null(ignore_strings)) vect <- remove_strings(vect, ignore_strings)
   # Final transformations, then return object "out".
   vect <- cpp_list_unique(vect, sort_vals = TRUE)
   vect <- cpp_paste_list(vect, collapse_str = " ")
-  vect[!nzchar(vect)] <- NA_character_
   return(vect)
 }
 
@@ -38,8 +37,11 @@ get_fingerprint_KC <- function(vect, bus_suffix = TRUE,
 #'@noRd
 get_fingerprint_ngram <- function(vect, numgram = 2, bus_suffix = TRUE,
                                   ignore_strings = NULL) {
+  # Remove char accent marks.
+  vect <- remove_accents(vect)
+  if(!is.null(ignore_strings)) ignore_strings <- remove_accents(ignore_strings)
   # Replace some punctuation with an empty string (want "Ed's" to be 1 word).
-  vect <- gsub("[;'`\"]", "", tolower(vect), perl = TRUE)
+  vect <- gsub("[;'`\"]", "", cpp_tolower(vect), perl = TRUE)
   # Replace other punct with a blank space (want "cats,inc" to be 2 words).
   vect <- gsub("[[:punct:]]", " ", vect, perl = TRUE)
   # Compile variable ignore_strings.
@@ -68,7 +70,6 @@ get_fingerprint_ngram <- function(vect, numgram = 2, bus_suffix = TRUE,
   }
   # Rest of the transformations. For each value in vect: get ngrams, filter by
   # unique, sort alphabetically, paste back together, and normalize encoding.
-  vect <- remove_accents(vect)
   if (numgram == 1) {
     vect <- strsplit(vect, "", fixed = TRUE)
     vect <- cpp_list_unique(vect, sort_vals = TRUE)

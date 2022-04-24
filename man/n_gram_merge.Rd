@@ -4,8 +4,15 @@
 \alias{n_gram_merge}
 \title{Value merging based on ngram fingerprints}
 \usage{
-n_gram_merge(vect, numgram = 2, ignore_strings = NULL, bus_suffix = TRUE,
-  edit_threshold = 1, weight = c(d = 0.33, i = 0.33, s = 1, t = 0.5), ...)
+n_gram_merge(
+  vect,
+  numgram = 2,
+  ignore_strings = NULL,
+  bus_suffix = TRUE,
+  edit_threshold = 1,
+  weight = c(d = 0.33, i = 0.33, s = 1, t = 0.5),
+  ...
+)
 }
 \arguments{
 \item{vect}{Character vector, items to be potentially clustered and merged.}
@@ -43,7 +50,7 @@ Character vector with similar values merged.
 This function takes a character vector and makes edits and merges values
 that are approximately equivalent yet not identical. It uses a two step
 process, the first is clustering values based on their ngram fingerprint (described here
-\url{https://github.com/OpenRefine/OpenRefine/wiki/Clustering-In-Depth}).
+\url{https://docs.openrefine.org/next/technical-reference/clustering-in-depth/}).
 The second step is merging values based on approximate string matching of
 the ngram fingerprints, using the [sd_lower_tri()] C function from the
 package \code{stringdist}.

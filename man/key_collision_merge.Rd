@@ -4,8 +4,12 @@
 \alias{key_collision_merge}
 \title{Value merging based on Key Collision}
 \usage{
-key_collision_merge(vect, ignore_strings = NULL, bus_suffix = TRUE,
-  dict = NULL)
+key_collision_merge(
+  vect,
+  ignore_strings = NULL,
+  bus_suffix = TRUE,
+  dict = NULL
+)
 }
 \arguments{
 \item{vect}{Character vector, items to be potentially clustered and merged.}
@@ -28,7 +32,7 @@ Character vector with similar values merged.
 This function takes a character vector and makes edits and merges values
 that are approximately equivalent yet not identical. It clusters values
 based on the key collision method, described here
-\url{https://github.com/OpenRefine/OpenRefine/wiki/Clustering-In-Depth}.
+\url{https://docs.openrefine.org/next/technical-reference/clustering-in-depth/}.
 }
 \examples{
 x <- c("Acme Pizza, Inc.", "ACME PIZZA COMPANY", "pizza, acme llc",

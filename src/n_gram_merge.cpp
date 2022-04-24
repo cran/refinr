@@ -5,20 +5,18 @@ using namespace Rcpp;
 
 // Iterate over all clusters, make mass edits to obj "vect", related to each
 // cluster.
-CharacterVector merge_ngram_clusters(List clusters,
-                                     const CharacterVector &n_gram_keys,
+CharacterVector merge_ngram_clusters(List &clusters,
+                                     CharacterVector &n_gram_keys,
                                      const CharacterVector &univect,
-                                     const CharacterVector &vect) {
+                                     CharacterVector &vect) {
   CharacterVector output = clone(vect);
 
   // Unlist clusters to a char vector, and get uniques.
-  CharacterVector clust_unlist = unique(cpp_unlist(clusters));
+  CharacterVector clust_unlist = unique(noNA(cpp_unlist(clusters)));
 
   // Create maps
-  std::vector<std::string> cl_ul = as<std::vector<std::string> >(clust_unlist);
-  std::vector<std::string> uni = as<std::vector<std::string> >(univect);
-  refinr_map ngram_map = create_map(n_gram_keys, cl_ul);
-  refinr_map univect_map = create_map(vect, uni);
+  refinr_map ngram_map = create_map_no_na(n_gram_keys, clust_unlist);
+  refinr_map univect_map = create_map_no_na(vect, univect);
 
   // initialize iterators.
   List::iterator clust_end = clusters.end();
@@ -26,7 +24,7 @@ CharacterVector merge_ngram_clusters(List clusters,
 
   // Initialize variables used throughout the loop below.
   CharacterVector curr_clust;
-  String most_freq_string;
+  freq_string mfs;
   int curr_clust_len;
   int ngram_idx_len;
   int univect_sub_len;
@@ -37,31 +35,39 @@ CharacterVector merge_ngram_clusters(List clusters,
   std::vector<int> ngram_idx;
   std::vector<int> curr_ngram_idx;
 
+  // refinr_map uses pointers to CHARSXP SEXP as keys. In the loop below,
+  // there are two points in which elements of CharacterVectors will be looked
+  // up in the two refinr_maps (ngram_map, univect_map), object "ptr" is used
+  // in each instance to house pointers to the underlying SEXP of the
+  // CharacterVectors.
+  SEXP* ptr;
+
   for(iter = clusters.begin(); iter != clust_end; ++iter) {
     curr_clust = *iter;
+    ptr = get_string_ptr(curr_clust);
 
     // Create subset of univect using the indices of n_gram_keys that appear
     // in curr_clust.
     curr_clust_len = curr_clust.size();
     ngram_idx.clear();
     for(int i = 0; i < curr_clust_len; ++i) {
-      curr_clust_str = as<std::string>(curr_clust[i]);
-      curr_ngram_idx = ngram_map[curr_clust_str];
+      curr_ngram_idx = ngram_map[ptr[i]];
       ngram_idx.insert(
         ngram_idx.end(), curr_ngram_idx.begin(), curr_ngram_idx.end()
       );
     }
     ngram_idx_len = ngram_idx.size();
-    std::vector<std::string> univect_sub(ngram_idx_len);
+    CharacterVector univect_sub(ngram_idx_len);
     for(int i = 0; i < ngram_idx_len; ++i) {
-      univect_sub[i] = uni[ngram_idx[i]];
+      univect_sub[i] = univect[ngram_idx[i]];
     }
 
     // Create subset of vect using the elements of univect_sub.
+    ptr = get_string_ptr(univect_sub);
     univect_sub_len = univect_sub.size();
     uni_idx.clear();
     for(int i = 0; i < univect_sub_len; ++i) {
-      curr_uni_idx = univect_map[univect_sub[i]];
+      curr_uni_idx = univect_map[ptr[i]];
       uni_idx.insert(
         uni_idx.end(), curr_uni_idx.begin(), curr_uni_idx.end()
       );
@@ -73,11 +79,11 @@ CharacterVector merge_ngram_clusters(List clusters,
     }
 
     // Find the string that appears most frequently in vect_sub.
-    most_freq_string = most_freq_str(vect_sub);
+    most_freq_str(vect_sub, mfs);
 
     // Edit all elements of output[uni_idx] to be equal to most_freq_string.
     for(int n = 0; n < uni_idx_len; ++n) {
-      output[uni_idx[n]] = most_freq_string;
+      output[uni_idx[n]] = mfs.mf_str;
     }
   }
 
@@ -90,9 +96,9 @@ CharacterVector merge_ngram_clusters(List clusters,
 // finding all elements of n_gram_keys that have one or more identical
 // matches, then pass args along to merge_ngram_clusters().
 // [[Rcpp::export]]
-CharacterVector ngram_merge_no_approx(const CharacterVector &n_gram_keys,
+CharacterVector ngram_merge_no_approx(CharacterVector &n_gram_keys,
                                       const CharacterVector &univect,
-                                      const CharacterVector &vect) {
+                                      CharacterVector &vect) {
   // Find all elements of n_gram_keys that have one or more identical
   // matches.
   CharacterVector n_gram_keys_dups = cpp_get_key_dups(n_gram_keys);
@@ -115,13 +121,18 @@ CharacterVector ngram_merge_no_approx(const CharacterVector &n_gram_keys,
 // Create initial clusters, filter clusters based on matrices of numeric
 // string edit distance values, then pass args along to merge_ngram_clusters().
 // [[Rcpp::export]]
-CharacterVector ngram_merge_approx(const CharacterVector &n_gram_keys,
-                                   const CharacterVector &one_gram_keys,
+CharacterVector ngram_merge_approx(CharacterVector &n_gram_keys,
+                                   CharacterVector &one_gram_keys,
                                    const CharacterVector &univect,
-                                   const CharacterVector &vect,
+                                   CharacterVector &vect,
                                    const double &edit_threshold,
-                                   SEXP method, SEXP weight, SEXP p, SEXP bt,
-                                   SEXP q, SEXP useBytes, SEXP nthread) {
+                                   const SEXP &method,
+                                   const SEXP &weight,
+                                   const SEXP &p,
+                                   const SEXP &bt,
+                                   const SEXP &q,
+                                   const SEXP &useBytes,
+                                   const SEXP &nthread) {
   // Get initial clusters.
   List initial_clust = get_ngram_initial_clusters(n_gram_keys, one_gram_keys);
 
@@ -161,32 +172,31 @@ List get_ngram_initial_clusters(CharacterVector ngram_keys,
   unigram_keys = unigram_keys[na_idx];
 
   // Create unordered_map, using unigram_dups as keys, values will be the
-  // indices of each dup in unigram_keys.
-  std::vector<std::string> dups = as<std::vector<std::string> >(unigram_dups);
-  refinr_map unigram_map = create_map(unigram_keys, dups);
+  // indices of each unigram_dup in unigram_keys.
+  refinr_map unigram_map = create_map(unigram_keys, unigram_dups);
+
+  // refinr_map uses pointers to CHARSXP SEXP as keys. Get pointers to the
+  // SEXP unigram_dups, to iterate over in the loop below.
+  SEXP* ptr = get_string_ptr(unigram_dups);
+
+  std::vector<int> curr_idx;
+  std::vector<std::string> curr_ngram;
+  std::string curr_str;
 
   // Iterate over unigram_dups, for each value get the corresponding indices
   // from unigram_map, Use those indices to subset ngram_keys, save the subset
   // to the list output.
-  std::vector<std::string>::iterator dups_end = dups.end();
-  std::vector<std::string>::iterator iter;
-
-  int i = 0;
-  int curr_idx_len;
-  std::vector<int> curr_idx;
-
-  for(iter = dups.begin(); iter != dups_end; ++iter) {
+  for(unsigned int j = 0; j < unigram_dups.size(); ++j) {
     // Create subset of ngram_keys using the indices from unigram_map that
     // correspond to the current unigram_dup iteration.
-    curr_idx = unigram_map[*iter];
-    curr_idx_len = curr_idx.size();
-    CharacterVector curr_ngram(curr_idx_len);
-    for(int n = 0; n < curr_idx_len; ++n) {
-      curr_ngram[n] = ngram_keys[curr_idx[n]];
+    curr_idx = unigram_map[ptr[j]];
+    curr_ngram.clear();
+    for(unsigned int n = 0; n < curr_idx.size(); ++n) {
+      curr_str = ngram_keys[curr_idx[n]];
+      curr_ngram.push_back(curr_str);
     }
 
-    out[i] = curr_ngram;
-    i++;
+    out[j] = curr_ngram;
   }
 
   return out;
@@ -195,22 +205,33 @@ List get_ngram_initial_clusters(CharacterVector ngram_keys,
 
 // Take in a list of character vectors, create a stringdist edit matrix for
 // each vector, return a list of edit matrices.
-List get_stringdist_matrices(const List &clusters, SEXP method, SEXP weight, SEXP p,
-                             SEXP bt, SEXP q, SEXP useBytes, SEXP nthread) {
+List get_stringdist_matrices(const List &clusters,
+                             const SEXP &method,
+                             const SEXP &weight,
+                             const SEXP &p,
+                             const SEXP &bt,
+                             const SEXP &q,
+                             const SEXP &useBytes,
+                             const SEXP &nthread) {
   int clust_len = clusters.size();
   List out(clust_len);
+  NumericVector x;
+  SEXP curr_clust;
+  int mat_dim;
+  int iter_len;
+  int x_val;
 
   for(int j = 0; j < clust_len; ++j) {
-    SEXP curr_clust = clusters[j];
+    curr_clust = clusters[j];
     // Run args through stringdist sd_lower_tri C function.
-    NumericVector x = stringdist_lower_tri(curr_clust, method, weight, p,
-                                           bt, q, useBytes, nthread);
+    x = stringdist_lower_tri(curr_clust, method, weight, p,
+                             bt, q, useBytes, nthread);
     // Initialize output matrix.
-    int mat_dim = Rf_xlength(curr_clust);
+    mat_dim = Rf_xlength(curr_clust);
     NumericMatrix mat(mat_dim, mat_dim);
 
-    int iter_len = mat_dim - 1;
-    int x_val = 0;
+    iter_len = mat_dim - 1;
+    x_val = 0;
 
     // Loop to fill in the lower and upper tri of mat with the numeric values
     // of x.
@@ -238,7 +259,8 @@ List get_stringdist_matrices(const List &clusters, SEXP method, SEXP weight, SEX
 // within the matrix, based on lowest numeric edit distance. (matches must
 // have a value below edit_threshold in order to be considered a cluster
 // suitable for merging).
-List filter_initial_clusters(const List &distmatrices, const double &edit_threshold,
+List filter_initial_clusters(const List &distmatrices,
+                             const double &edit_threshold,
                              const List &clusters) {
   int distmatrices_len = distmatrices.size();
   List out(distmatrices_len);
@@ -247,9 +269,12 @@ List filter_initial_clusters(const List &distmatrices, const double &edit_thresh
   CharacterVector curr_clust;
   CharacterVector max_clust;
   CharacterVector terms;
-  DoubleVector curr_row;
-  IntegerVector lows_idx;
+  NumericMatrix curr_mat;
+  std::vector<int> lows_idx;
+  std::vector<double> lows;
+  std::vector<double> curr_row;
   double lowest;
+  int lowest_count;
   int lows_idx_len;
   int clust_len;
   int max_clust_idx;
@@ -257,7 +282,7 @@ List filter_initial_clusters(const List &distmatrices, const double &edit_thresh
 
   for(int i = 0; i < distmatrices_len; ++i) {
     // Get current matrix object, establish other variables.
-    NumericMatrix curr_mat = distmatrices[i];
+    curr_mat = as<NumericMatrix>(distmatrices[i]);
     mat_nrow = curr_mat.nrow();
 
     if(mat_nrow < 2) {
@@ -267,36 +292,39 @@ List filter_initial_clusters(const List &distmatrices, const double &edit_thresh
       continue;
     }
 
-    DoubleVector lows(mat_nrow);
-    IntegerVector olap(mat_nrow, 0);
-
     // For each row of curr_mat, get the min value present. If none are below
     // the edit_threshold, append NA to the output and move to the next
     // iteration. Also ID whether or not any of the rows of curr_mat have more
     // than one cluster match (ie a min value that repeats within any given
     // row).
+    IntegerVector olap(mat_nrow, 0);
+    curr_row.clear();
+    lows.clear();
+    lows_idx.clear();
     for(int row_idx = 0; row_idx < mat_nrow; ++row_idx) {
-      curr_row = curr_mat(row_idx,_);
-      LogicalVector row_bool(mat_nrow);
+      curr_row.clear();
       for(int n = 0; n < mat_nrow; ++n) {
         if(n != row_idx) {
-          row_bool[n] = TRUE;
-        } else {
-          row_bool[n] = FALSE;
+          curr_row.push_back(curr_mat(row_idx, n));
         }
       }
-
-      curr_row = curr_row[row_bool];
-      lowest = min(curr_row);
-      lows[row_idx] = lowest;
+      lowest = *std::min_element(curr_row.begin(), curr_row.end());
+      lows.push_back(lowest);
       if(lowest < edit_threshold) {
-        olap[row_idx] = sum(curr_row == lowest);
+        lowest_count = 0;
+        for(unsigned int n = 0; n < curr_row.size(); ++n) {
+          if(curr_row[n] == lowest) {
+            lowest_count += 1;
+          }
+        }
+        olap[row_idx] = lowest_count;
+        lows_idx.push_back(row_idx);
       }
     }
 
     // If none of the rows in curr_mat contain an edit distance value below
     // the edit_threshold, return NA and move on to the next iteration.
-    if(is_true(all(lows > edit_threshold))) {
+    if(lows_idx.size() == 0) {
       out[i] = NA_STRING;
       na_filter[i] = FALSE;
       continue;
@@ -306,19 +334,17 @@ List filter_initial_clusters(const List &distmatrices, const double &edit_thresh
     // edit distance less than edit_threshold.
     olap = olap[olap > 0];
 
-    // Get indices of obj lows that are less than edit_threshold.
-    lows_idx = seq(0, mat_nrow - 1);
-    lows_idx = lows_idx[lows < edit_threshold];
-    lows_idx_len = lows_idx.size();
-
     // Generate clusters of char keys based on the edit distance matrix values.
+    lows_idx_len = lows_idx.size();
     List clust(lows_idx_len);
     LogicalVector trim_idx(lows_idx_len, TRUE);
+    NumericVector lens_of_clusts(lows_idx_len);
     curr_clust = clusters[i];
     for(int n = 0; n < lows_idx_len; ++n) {
       terms = curr_clust[curr_mat(lows_idx[n], _) < edit_threshold];
-      terms = unique(terms);
+      terms = unique(noNA(terms));
       clust[n] = terms;
+      lens_of_clusts[n] = terms.size();
       // Check to see if terms is a complete subset of an existing cluster.
       if(n > 0) {
         for(int k = 0; k < n; ++k) {
@@ -332,32 +358,25 @@ List filter_initial_clusters(const List &distmatrices, const double &edit_thresh
 
     // trim objs clust and olap to only include unique clusters.
     clust = clust[trim_idx];
+    lens_of_clusts = lens_of_clusts[trim_idx];
     olap = olap[trim_idx];
 
     // If any rows of curr_mat have a min edit distance that repeats,
     // eliminate any clusters that are complete subsets of the longest
     // cluster of the group.
     clust_len = clust.size();
-    if(sum(olap > 1) > 0 and clust_len > 1) {
-      NumericVector lens_of_clusts(clust_len);
-      for(int n = 0; n < clust_len; ++n) {
-        lens_of_clusts[n] = clust.size();
-      }
-
+    if(sum(noNA(olap > 1)) > 0 and clust_len > 1) {
       // Eliminate any clusters that are complete subsets of the longest
       // cluster of the group.
-      max_clust_idx = which_max(lens_of_clusts);
+      max_clust_idx = which_max(noNA(lens_of_clusts));
       max_clust = clust[max_clust_idx];
-      LogicalVector clust_bool(clust_len);
+      LogicalVector clust_bool(clust_len, TRUE);
 
       for(int n = 0; n < clust_len; ++n) {
-        curr_clust = clust[n];
         if(n == max_clust_idx) {
-          clust_bool[n] = TRUE;
           continue;
         }
-
-        clust_bool[n] = !cpp_all(curr_clust, max_clust);
+        clust_bool[n] = !cpp_all(clust[n], max_clust);
       }
 
       clust = clust[clust_bool];
@@ -381,12 +400,13 @@ List filter_initial_clusters(const List &distmatrices, const double &edit_thresh
 // string that's been tokenized by individual char. This function iterates
 // over the list, for each char vector it will compile every available ngram
 // of length equal to arg numgram. Output is a list of ngrams as char vectors.
-List char_ngram(const std::vector<std::string>& strings, int numgram) {
+List char_ngram(const std::vector<std::string> &strings, const int &numgram) {
   int strings_len = strings.size();
   List out(strings_len);
   int numgram_sub = numgram - 1;
 
   IntegerVector idx;
+  std::vector<std::string> curr_out;
   std::string curr_str;
   std::string curr_token;
   int curr_str_len;
@@ -398,14 +418,14 @@ List char_ngram(const std::vector<std::string>& strings, int numgram) {
       out[i] = NA_STRING;
       continue;
     }
-    CharacterVector curr_out(curr_str_len);
+    curr_out.clear();
     for(int j = 0; j < curr_str_len; ++j) {
       idx = seq(j, j + numgram_sub);
       curr_token.clear();
       for(int k = 0; k < numgram; ++k) {
         curr_token += curr_str[idx[k]];
       }
-      curr_out[j] = curr_token;
+      curr_out.push_back(curr_token);
     }
     out[i] = curr_out;
   }
@@ -419,7 +439,7 @@ List char_ngram(const std::vector<std::string>& strings, int numgram) {
 // string.
 // [[Rcpp::export]]
 CharacterVector cpp_get_char_ngrams(const std::vector<std::string> &vects,
-                                    int numgram) {
+                                    const int &numgram) {
 
   // Get character ngrams for each element of vects.
   List vects_mod = char_ngram(vects, numgram);
@@ -429,7 +449,7 @@ CharacterVector cpp_get_char_ngrams(const std::vector<std::string> &vects,
   vects_mod = cpp_list_unique(vects_mod, TRUE);
 
   // For each element of vects, combine all ngram strings into a single string,
-  // equivelant to calling r func paste(char_vect, collapse = "") on each
+  // equivalent to calling r func paste(char_vect, collapse = "") on each
   // element of vects.
   CharacterVector out = cpp_paste_list(vects_mod, "");
 
